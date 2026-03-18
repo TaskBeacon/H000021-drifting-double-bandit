@@ -1,0 +1,15 @@
+id: H000021
+slug: drifting-double-bandit
+title: Drifting Double-Bandit Task
+acquisition: behavior
+variant: html
+cognitive_domain:
+  - reinforcement-learning
+  - exploration-exploitation
+  - adaptive-choice
+maturity: prototype
+version:
+  release_tag: "0.1.0"
+contracts:
+  psyflow_web_taps: v0.1.0
+maintainer: []

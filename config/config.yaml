@@ -1,0 +1,242 @@
+subinfo_fields:
+  - name: subject_id
+    type: int
+    constraints:
+      min: 101
+      max: 999
+      digits: 3
+
+subinfo_mapping:
+  subject_id: Subject ID (3 digits)
+  Participant Information: Participant Information
+  registration_failed: Registration failed
+  registration_successful: Registration successful
+  invalid_input: "{field} is invalid"
+
+window:
+  size: [1280, 720]
+  units: pix
+  screen: 0
+  bg_color: black
+  fullscreen: true
+  fullscreen_lock_escape: true
+  monitor_width_cm: 35.5
+  monitor_distance_cm: 60
+
+task:
+  task_name: drifting_double_bandit_preview
+  save_path: ./outputs/human
+  language: Chinese
+  voice_name: zh-CN-YunyangNeural
+  voice_enabled: true
+  total_blocks: 2
+  total_trials: 40
+  trial_per_block: 20
+  conditions: [bandit]
+  key_list: ["f", "j", "space"]
+  left_key: "f"
+  right_key: "j"
+  reward_win: 10
+  reward_loss: 0
+  delta: 10
+  seed_mode: same_across_sub
+  overall_seed: 2025
+  input_mode: keyboard
+  hide_cursor: true
+  force_quit_enabled: true
+  force_quit_shortcut: ctrl+q
+
+timing:
+  pre_choice_fixation_duration: 0.5
+  choice_duration: 2.0
+  choice_confirmation_duration: 0.35
+  outcome_feedback_duration: 0.8
+  iti_duration: 0.6
+
+stimuli:
+  fixation:
+    type: text
+    font: SimHei
+    text: "+"
+    color: white
+    height: 44
+
+  instruction_text:
+    type: text
+    font: SimHei
+    text: |
+      漂移双臂老虎机任务
+
+      你将在左右两台机器之间反复选择。
+      两台机器的中奖概率会随时间缓慢变化。
+      你的目标是在任务中持续学习并获得更高总分。
+
+      按键规则：
+      - 按 F 选择左侧机器
+      - 按 J 选择右侧机器
+
+      按空格键开始任务。
+    color: white
+    height: 28
+    wrapWidth: 980
+
+  machine_left:
+    type: rect
+    width: 240
+    height: 300
+    pos: [-230, 20]
+    lineColor: white
+    lineWidth: 3
+    fillColor: [0.12, 0.12, 0.12]
+
+  machine_right:
+    type: rect
+    width: 240
+    height: 300
+    pos: [230, 20]
+    lineColor: white
+    lineWidth: 3
+    fillColor: [0.12, 0.12, 0.12]
+
+  machine_left_label:
+    type: text
+    font: SimHei
+    text: 左侧机器
+    color: white
+    height: 34
+    pos: [-230, 20]
+
+  machine_right_label:
+    type: text
+    font: SimHei
+    text: 右侧机器
+    color: white
+    height: 34
+    pos: [230, 20]
+
+  highlight_left:
+    type: rect
+    width: 270
+    height: 330
+    pos: [-230, 20]
+    lineColor: yellow
+    lineWidth: 5
+    fillColor: null
+
+  highlight_right:
+    type: rect
+    width: 270
+    height: 330
+    pos: [230, 20]
+    lineColor: yellow
+    lineWidth: 5
+    fillColor: null
+
+  choice_prompt:
+    type: text
+    font: SimHei
+    text: |
+      请选择一台机器
+      请在 {deadline_s} 秒内作答
+    color: white
+    height: 30
+    pos: [0, -220]
+    wrapWidth: 980
+
+  target_prompt:
+    type: text
+    font: SimHei
+    text: "你选择了：{choice_label}"
+    color: cyan
+    height: 34
+    pos: [0, 220]
+    wrapWidth: 980
+
+  feedback_win:
+    type: text
+    font: SimHei
+    text: |
+      中奖：+{reward_delta} 分
+      当前总分：{total_score}
+    color: green
+    height: 38
+    wrapWidth: 980
+
+  feedback_loss:
+    type: text
+    font: SimHei
+    text: |
+      未中奖：+{reward_delta} 分
+      当前总分：{total_score}
+    color: orange
+    height: 38
+    wrapWidth: 980
+
+  block_break:
+    type: text
+    font: SimHei
+    text: |
+      区块 {block_num}/{total_blocks} 结束
+      左侧选择率：{left_rate}
+      中奖率：{win_rate}
+      无响应比例：{no_response_rate}
+      区块得分：{total_score}
+
+      按空格键继续
+    color: white
+    height: 24
+    wrapWidth: 980
+
+  good_bye:
+    type: text
+    font: SimHei
+    text: |
+      任务结束
+      总分：{total_score}
+      左侧选择率：{left_rate}
+      中奖率：{win_rate}
+      无响应比例：{no_response_rate}
+
+      按空格键退出
+    color: white
+    height: 30
+    wrapWidth: 980
+
+triggers:
+  map:
+    exp_onset: 1
+    exp_end: 2
+    block_onset: 10
+    block_end: 11
+    pre_choice_fixation_onset: 20
+    choice_onset: 30
+    choice_left_press: 31
+    choice_right_press: 32
+    choice_no_response: 33
+    choice_imputed: 34
+    choice_confirmation_onset: 40
+    outcome_feedback_win_onset: 50
+    outcome_feedback_loss_onset: 51
+    iti_onset: 60
+
+  driver:
+    type: serial_url
+    url: loop://
+    baudrate: 115200
+
+  timing:
+    post_delay_ms: 1
+
+  policy:
+    strict: false
+
+condition_generation:
+  initial_left_prob: 0.65
+  initial_right_prob: 0.35
+  drift_sigma: 0.05
+  min_prob: 0.1
+  max_prob: 0.9
+  anti_correlated: true
+  no_choice_policy: random
+  randomize_within_block: false
+  enable_logging: true
