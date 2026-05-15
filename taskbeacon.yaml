@@ -11,5 +11,7 @@ maturity: prototype
 version:
   release_tag: "0.1.0"
 contracts:
-  taps: v0.1.0
+  taps: v0.2.0
 maintainer: []
+runtime:
+  profile: web
