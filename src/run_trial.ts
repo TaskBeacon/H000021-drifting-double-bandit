@@ -50,6 +50,7 @@ export function run_trial(
   const { settings, stimBank, rewardTracker, block_id, block_idx } = context;
   const spec = parse_drifting_condition(condition);
   const triggerMap = (settings.triggers ?? {}) as Record<string, unknown>;
+  const trigger = (name: string, fallback: number): number => Number(triggerMap[name] ?? fallback);
 
   const leftKey = String(settings.left_key ?? "f");
   const rightKey = String(settings.right_key ?? "j");
@@ -64,6 +65,20 @@ export function run_trial(
   const choiceConfirmationDuration = Number(settings.choice_confirmation_duration ?? 0.35);
   const outcomeFeedbackDuration = Number(settings.outcome_feedback_duration ?? 0.8);
   const itiDuration = Number(settings.iti_duration ?? 0.6);
+
+  const choiceKeyFromSnapshot = (snapshot: TrialSnapshot): string =>
+    resolveChoiceKey(snapshot.units.bandit_choice?.response, spec.fallback_side, leftKey, rightKey);
+  const choiceSideFromSnapshot = (snapshot: TrialSnapshot): "left" | "right" =>
+    resolveChoiceSide(choiceKeyFromSnapshot(snapshot), leftKey);
+  const choiceProbFromSnapshot = (snapshot: TrialSnapshot): number =>
+    choiceSideFromSnapshot(snapshot) === "left" ? spec.p_left : spec.p_right;
+  const rewardWinForSnapshot = (snapshot: TrialSnapshot): boolean =>
+    reward_from_draw({
+      choice_side: resolveChoiceSide(String(snapshot.units.bandit_choice?.choice_key ?? leftKey), leftKey),
+      p_left: spec.p_left,
+      p_right: spec.p_right,
+      draw_u: spec.reward_draw_u
+    });
 
   const preChoiceFixation = trial.unit("pre_choice_fixation").addStim(stimBank.get("fixation"));
   set_trial_context(preChoiceFixation, {
@@ -81,7 +96,7 @@ export function run_trial(
     },
     stim_id: "fixation"
   });
-  preChoiceFixation.show({ duration: preChoiceFixationDuration }).to_dict();
+  preChoiceFixation.show({ duration: preChoiceFixationDuration, onset_trigger: trigger("pre_choice_fixation_onset", 20) }).to_dict();
 
   const banditChoice = trial
     .unit("bandit_choice")
@@ -116,30 +131,24 @@ export function run_trial(
       keys: [leftKey, rightKey],
       correct_keys: [leftKey, rightKey],
       duration: choiceDuration,
+      onset_trigger: trigger("choice_onset", 30),
       terminate_on_response: false,
       response_trigger: {
-        [leftKey]: Number(triggerMap.choice_left_press ?? 31),
-        [rightKey]: Number(triggerMap.choice_right_press ?? 32)
+        [leftKey]: trigger("choice_left_press", 31),
+        [rightKey]: trigger("choice_right_press", 32)
       },
-      timeout_trigger: Number(triggerMap.choice_no_response ?? 33)
+      timeout_trigger: trigger("choice_no_response", 33)
     })
     .set_state({
-      choice_key: (snapshot: TrialSnapshot) =>
-        resolveChoiceKey(snapshot.units.bandit_choice?.response, spec.fallback_side, leftKey, rightKey),
-      choice_side: (snapshot: TrialSnapshot) =>
-        resolveChoiceSide(
-          resolveChoiceKey(snapshot.units.bandit_choice?.response, spec.fallback_side, leftKey, rightKey),
-          leftKey
-        ),
-      choice_prob: (snapshot: TrialSnapshot) =>
-        resolveChoiceSide(
-          resolveChoiceKey(snapshot.units.bandit_choice?.response, spec.fallback_side, leftKey, rightKey),
-          leftKey
-        ) === "left"
-          ? spec.p_left
-          : spec.p_right,
+      choice_key: choiceKeyFromSnapshot,
+      choice_side: choiceSideFromSnapshot,
+      choice_prob: choiceProbFromSnapshot,
       missed_choice: (snapshot: TrialSnapshot) =>
         snapshot.units.bandit_choice?.response !== leftKey && snapshot.units.bandit_choice?.response !== rightKey,
+      choice_imputed_trigger: (snapshot: TrialSnapshot) =>
+        snapshot.units.bandit_choice?.response !== leftKey && snapshot.units.bandit_choice?.response !== rightKey
+          ? trigger("choice_imputed", 34)
+          : null,
       choice_rt: (snapshot: TrialSnapshot) =>
         snapshot.units.bandit_choice?.response_time ?? snapshot.units.bandit_choice?.rt
     })
@@ -172,25 +181,18 @@ export function run_trial(
       stage: "choice_confirmation",
       p_left: spec.p_left,
       p_right: spec.p_right,
+      choice_side: (snapshot: TrialSnapshot) => snapshot.units.bandit_choice?.choice_side,
+      choice_prob: (snapshot: TrialSnapshot) => snapshot.units.bandit_choice?.choice_prob,
       block_idx
     },
     stim_id: "selection_confirmation"
   });
-  choiceConfirmation.show({ duration: choiceConfirmationDuration }).to_dict();
+  choiceConfirmation.show({ duration: choiceConfirmationDuration, onset_trigger: trigger("choice_confirmation_onset", 40) }).to_dict();
 
   const outcomeFeedback = trial
     .unit("outcome_feedback")
     .addStim((snapshot: TrialSnapshot) => {
-      const choiceSide = resolveChoiceSide(
-        String(snapshot.units.bandit_choice?.choice_key ?? leftKey),
-        leftKey
-      );
-      const rewardWin = reward_from_draw({
-        choice_side: choiceSide,
-        p_left: spec.p_left,
-        p_right: spec.p_right,
-        draw_u: spec.reward_draw_u
-      });
+      const rewardWin = rewardWinForSnapshot(snapshot);
       const rewardDelta = rewardWin ? rewardWinValue : rewardLossValue;
       const totalScore = rewardTracker.current() + rewardDelta;
       return rewardWin
@@ -214,39 +216,24 @@ export function run_trial(
       stage: "outcome_feedback",
       p_left: spec.p_left,
       p_right: spec.p_right,
+      reward_win: rewardWinForSnapshot,
       block_idx
     },
-    stim_id: "outcome_feedback"
+    stim_id: (snapshot: TrialSnapshot) => (rewardWinForSnapshot(snapshot) ? "feedback_win" : "feedback_loss")
   });
   outcomeFeedback
-    .show({ duration: outcomeFeedbackDuration })
+    .show({
+      duration: outcomeFeedbackDuration,
+      onset_trigger: (snapshot: TrialSnapshot) =>
+        rewardWinForSnapshot(snapshot)
+          ? trigger("outcome_feedback_win_onset", 50)
+          : trigger("outcome_feedback_loss_onset", 51)
+    })
     .set_state({
-      reward_win: (snapshot: TrialSnapshot) =>
-        reward_from_draw({
-          choice_side: resolveChoiceSide(String(snapshot.units.bandit_choice?.choice_key ?? leftKey), leftKey),
-          p_left: spec.p_left,
-          p_right: spec.p_right,
-          draw_u: spec.reward_draw_u
-        }),
-      reward_delta: (snapshot: TrialSnapshot) =>
-        reward_from_draw({
-          choice_side: resolveChoiceSide(String(snapshot.units.bandit_choice?.choice_key ?? leftKey), leftKey),
-          p_left: spec.p_left,
-          p_right: spec.p_right,
-          draw_u: spec.reward_draw_u
-        })
-          ? rewardWinValue
-          : rewardLossValue,
+      reward_win: rewardWinForSnapshot,
+      reward_delta: (snapshot: TrialSnapshot) => (rewardWinForSnapshot(snapshot) ? rewardWinValue : rewardLossValue),
       total_score: (snapshot: TrialSnapshot) =>
-        rewardTracker.current() +
-        (reward_from_draw({
-          choice_side: resolveChoiceSide(String(snapshot.units.bandit_choice?.choice_key ?? leftKey), leftKey),
-          p_left: spec.p_left,
-          p_right: spec.p_right,
-          draw_u: spec.reward_draw_u
-        })
-          ? rewardWinValue
-          : rewardLossValue)
+        rewardTracker.current() + (rewardWinForSnapshot(snapshot) ? rewardWinValue : rewardLossValue)
     })
     .to_dict();
 
@@ -264,7 +251,7 @@ export function run_trial(
     },
     stim_id: "fixation"
   });
-  iti.show({ duration: itiDuration }).to_dict();
+  iti.show({ duration: itiDuration, onset_trigger: trigger("iti_onset", 60) }).to_dict();
 
   trial.finalize((snapshot, _runtime, helpers) => {
     const choiceKey = String(snapshot.units.bandit_choice?.choice_key ?? leftKey);

@@ -1,25 +1,36 @@
-import type { ReducedTrialRow } from "psyflow-web";
+import { PythonRandom, type ReducedTrialRow } from "psyflow-web";
 
 function clip(value: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, value));
 }
 
-function makeSeededRandom(seed: number): () => number {
-  let value = seed >>> 0;
-  return () => {
-    value = (value + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(value ^ (value >>> 15), 1 | value);
-    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+class PythonGaussRandom {
+  private readonly rng: PythonRandom;
+  private nextGauss: number | null = null;
 
-function gaussianFromRng(rng: () => number): number {
-  const u1 = Math.max(Number.EPSILON, rng());
-  const u2 = rng();
-  const radius = Math.sqrt(-2.0 * Math.log(u1));
-  const theta = 2.0 * Math.PI * u2;
-  return radius * Math.cos(theta);
+  constructor(seed: number) {
+    this.rng = new PythonRandom(seed);
+  }
+
+  random(): number {
+    return this.rng.random();
+  }
+
+  gauss(mu = 0, sigma = 1): number {
+    let z = this.nextGauss;
+    this.nextGauss = null;
+    if (z === null) {
+      const x2pi = this.random() * Math.PI * 2;
+      const g2rad = Math.sqrt(-2.0 * Math.log(1.0 - this.random()));
+      z = Math.cos(x2pi) * g2rad;
+      this.nextGauss = Math.sin(x2pi) * g2rad;
+    }
+    return mu + z * sigma;
+  }
+
+  shuffle<T>(items: T[]): T[] {
+    return this.rng.shuffle(items);
+  }
 }
 
 function toPercent(value: number): string {
@@ -64,7 +75,7 @@ export interface ConditionGenerationConfig {
   enable_logging?: boolean;
 }
 
-function chooseFallbackSide(policy: unknown, rng: () => number): "left" | "right" {
+function chooseFallbackSide(policy: unknown, rng: PythonGaussRandom): "left" | "right" {
   const normalized = String(policy ?? "random").trim().toLowerCase();
   if (normalized === "left") {
     return "left";
@@ -72,11 +83,11 @@ function chooseFallbackSide(policy: unknown, rng: () => number): "left" | "right
   if (normalized === "right") {
     return "right";
   }
-  return rng() < 0.5 ? "left" : "right";
+  return rng.random() < 0.5 ? "left" : "right";
 }
 
 function driftOnce(
-  rng: () => number,
+  rng: PythonGaussRandom,
   pLeft: number,
   pRight: number,
   driftSigma: number,
@@ -88,14 +99,14 @@ function driftOnce(
     return [pLeft, pRight];
   }
   if (antiCorrelated) {
-    const delta = gaussianFromRng(rng) * driftSigma;
+    const delta = rng.gauss(0, driftSigma);
     const nextLeft = clip(pLeft + delta, minProb, maxProb);
     const nextRightRaw = clip(1 - nextLeft, minProb, maxProb);
     const correctedLeft = clip(1 - nextRightRaw, minProb, maxProb);
     return [correctedLeft, nextRightRaw];
   }
-  const nextLeft = clip(pLeft + gaussianFromRng(rng) * driftSigma, minProb, maxProb);
-  const nextRight = clip(pRight + gaussianFromRng(rng) * driftSigma, minProb, maxProb);
+  const nextLeft = clip(pLeft + rng.gauss(0, driftSigma), minProb, maxProb);
+  const nextRight = clip(pRight + rng.gauss(0, driftSigma), minProb, maxProb);
   return [nextLeft, nextRight];
 }
 
@@ -111,7 +122,7 @@ export function generate_drifting_bandit_conditions(
   }
 
   const cfg = config ?? {};
-  const rng = makeSeededRandom(Math.trunc(seed));
+  const rng = new PythonGaussRandom(Math.trunc(seed));
   const minProb = clip(Number(cfg.min_prob ?? 0.1), 0, 1);
   const maxProb = clip(Number(cfg.max_prob ?? 0.9), minProb, 1);
   const driftSigma = Math.max(0, Number(cfg.drift_sigma ?? 0.05));
@@ -133,16 +144,13 @@ export function generate_drifting_bandit_conditions(
       condition_id: conditionId,
       trial_index: trialIndex,
       fallback_side: chooseFallbackSide(noChoicePolicy, rng),
-      reward_draw_u: rng()
+      reward_draw_u: rng.random()
     });
     [pLeft, pRight] = driftOnce(rng, pLeft, pRight, driftSigma, minProb, maxProb, antiCorrelated);
   }
 
   if (randomizeWithinBlock) {
-    for (let index = conditions.length - 1; index > 0; index -= 1) {
-      const swapIndex = Math.floor(rng() * (index + 1));
-      [conditions[index], conditions[swapIndex]] = [conditions[swapIndex], conditions[index]];
-    }
+    rng.shuffle(conditions);
   }
 
   return conditions.map((item) => JSON.stringify(item));
@@ -173,9 +181,9 @@ export function reward_from_draw(args: {
 }
 
 export function summarizeBlock(rows: ReducedTrialRow[], blockId: string): {
-  left_rate: string;
-  win_rate: string;
-  no_response_rate: string;
+  left_rate: number;
+  win_rate: number;
+  no_response_rate: number;
   total_score: number;
 } {
   const blockRows = rows.filter((row) => String(row.block_id ?? "") === blockId);
@@ -185,9 +193,9 @@ export function summarizeBlock(rows: ReducedTrialRow[], blockId: string): {
   const noResponseRate = blockRows.filter((row) => row.missed_choice === true).length / n;
   const totalScore = blockRows.reduce((sum, row) => sum + Number(row.reward_delta ?? 0), 0);
   return {
-    left_rate: toPercent(leftRate),
-    win_rate: toPercent(winRate),
-    no_response_rate: toPercent(noResponseRate),
+    left_rate: leftRate,
+    win_rate: winRate,
+    no_response_rate: noResponseRate,
     total_score: totalScore
   };
 }

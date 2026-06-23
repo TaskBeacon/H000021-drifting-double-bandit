@@ -7,11 +7,11 @@ subinfo_fields:
       digits: 3
 
 subinfo_mapping:
-  subject_id: Subject ID (3 digits)
-  Participant Information: Participant Information
-  registration_failed: Registration failed
-  registration_successful: Registration successful
-  invalid_input: "{field} is invalid"
+  subject_id: 被试编号（3位）
+  Participant Information: 被试信息
+  registration_failed: 注册失败
+  registration_successful: 注册成功
+  invalid_input: "{field} 输入无效"
 
 window:
   size: [1280, 720]
@@ -24,11 +24,11 @@ window:
   monitor_distance_cm: 60
 
 task:
-  task_name: drifting_double_bandit_preview
+  task_name: drifting_double_bandit
   save_path: ./outputs/human
   language: Chinese
   voice_name: zh-CN-YunyangNeural
-  voice_enabled: true
+  voice_enabled: false
   total_blocks: 4
   total_trials: 160
   trial_per_block: 40
@@ -69,7 +69,7 @@ stimuli:
 
       你将在左右两台机器之间反复选择。
       两台机器的中奖概率会随时间缓慢变化。
-      你的目标是在任务中持续学习并获得更高总分。
+      你的目标是在任务中不断学习并获得更高总分。
 
       按键规则：
       - 按 F 选择左侧机器
@@ -156,7 +156,7 @@ stimuli:
     type: text
     font: SimHei
     text: |
-      中奖：+{reward_delta} 分
+      中奖！ +{reward_delta} 分
       当前总分：{total_score}
     color: green
     height: 38
@@ -166,7 +166,7 @@ stimuli:
     type: text
     font: SimHei
     text: |
-      未中奖：+{reward_delta} 分
+      未中奖 +{reward_delta} 分
       当前总分：{total_score}
     color: orange
     height: 38
@@ -177,9 +177,9 @@ stimuli:
     font: SimHei
     text: |
       区块 {block_num}/{total_blocks} 结束
-      左侧选择率：{left_rate}
-      中奖率：{win_rate}
-      无响应比例：{no_response_rate}
+      左侧选择率：{left_rate:.1%}
+      中奖率：{win_rate:.1%}
+      无响应比例：{no_response_rate:.1%}
       区块得分：{total_score}
 
       按空格键继续
