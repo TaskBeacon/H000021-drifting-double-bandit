@@ -29,9 +29,9 @@ task:
   language: Chinese
   voice_name: zh-CN-YunyangNeural
   voice_enabled: true
-  total_blocks: 2
-  total_trials: 40
-  trial_per_block: 20
+  total_blocks: 4
+  total_trials: 160
+  trial_per_block: 40
   conditions: [bandit]
   key_list: ["f", "j", "space"]
   left_key: "f"
